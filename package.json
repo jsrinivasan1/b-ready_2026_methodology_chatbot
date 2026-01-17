@@ -1,0 +1,20 @@
+{
+  "name": "b-ready-2026-methodology-chatbot",
+  "version": "1.0.0",
+  "description": "B-Ready 2026 methodology - ask me anything chatbot",
+  "main": "index.html",
+  "scripts": {
+    "dev": "netlify dev"
+  },
+  "keywords": [
+    "b-ready",
+    "world-bank",
+    "chatbot",
+    "methodology"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.24.0"
+  }
+}
