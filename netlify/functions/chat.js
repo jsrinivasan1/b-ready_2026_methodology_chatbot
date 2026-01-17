@@ -7,109 +7,150 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-// Improved search for relevant chunks based on query
-function searchChunks(query, maxResults = 10) {
-  // Normalize and extract keywords from query
+// B-READY topics for topic-aware search
+const TOPICS = [
+  "business entry",
+  "business location",
+  "utility services",
+  "labor",
+  "financial services",
+  "international trade",
+  "taxation",
+  "dispute resolution",
+  "market competition",
+  "business insolvency",
+];
+
+// Detect which topic the query is about
+function detectTopic(query) {
   const queryLower = query.toLowerCase();
+  for (const topic of TOPICS) {
+    if (queryLower.includes(topic)) {
+      return topic;
+    }
+  }
+  return null;
+}
+
+// Improved search for relevant chunks based on query
+function searchChunks(query, maxResults = 12) {
+  const queryLower = query.toLowerCase();
+
+  // Detect if query is about a specific topic
+  const detectedTopic = detectTopic(query);
+
+  // Extract keywords from query
+  const stopWords = [
+    "the",
+    "and",
+    "for",
+    "are",
+    "what",
+    "how",
+    "which",
+    "that",
+    "this",
+    "with",
+    "can",
+    "you",
+    "tell",
+    "about",
+    "please",
+    "show",
+    "list",
+    "all",
+  ];
   const queryWords = queryLower
     .split(/\s+/)
     .filter((word) => word.length > 2)
-    .filter(
-      (word) =>
-        ![
-          "the",
-          "and",
-          "for",
-          "are",
-          "what",
-          "how",
-          "which",
-          "that",
-          "this",
-          "with",
-        ].includes(word)
-    );
+    .filter((word) => !stopWords.includes(word));
 
-  // Score each chunk based on keyword matches
+  // Score each chunk
   const scores = {};
-
-  // Method 1: Use search index for keyword matching
-  for (const word of queryWords) {
-    // Exact matches in index (highest weight)
-    if (searchIndex[word]) {
-      for (const chunkId of searchIndex[word]) {
-        scores[chunkId] = (scores[chunkId] || 0) + 3;
-      }
-    }
-
-    // Partial matches (medium weight)
-    for (const [indexWord, chunkIds] of Object.entries(searchIndex)) {
-      if (
-        indexWord.length > 3 &&
-        (indexWord.includes(word) || word.includes(indexWord))
-      ) {
-        for (const chunkId of chunkIds) {
-          scores[chunkId] = (scores[chunkId] || 0) + 1;
-        }
-      }
-    }
-  }
-
-  // Method 2: Direct content search for important terms
-  // This catches cases where the index might miss context
-  const importantTerms = queryWords.filter((w) => w.length > 4);
 
   for (const chunk of handbookChunks) {
     const contentLower = chunk.content.toLowerCase();
+    let score = 0;
 
-    // Bonus for chunks containing multiple query words together
-    let multiWordBonus = 0;
+    // CRITICAL: If a topic is detected, heavily prioritize chunks from that topic
+    if (detectedTopic) {
+      if (contentLower.includes(detectedTopic)) {
+        score += 20; // Big boost for topic match
+      } else {
+        // Penalize chunks from other topics
+        for (const otherTopic of TOPICS) {
+          if (otherTopic !== detectedTopic && contentLower.includes(otherTopic + " topic")) {
+            score -= 10;
+          }
+        }
+      }
+    }
+
+    // Keyword matching from index
+    for (const word of queryWords) {
+      if (searchIndex[word] && searchIndex[word].includes(chunk.id)) {
+        score += 3;
+      }
+
+      // Direct content match
+      if (contentLower.includes(word)) {
+        score += 1;
+      }
+    }
+
+    // Boost for questionnaire content when query mentions "question" or "questionnaire"
+    if (
+      queryLower.includes("question") ||
+      queryLower.includes("questionnaire")
+    ) {
+      // Look for numbered questions (e.g., "35.", "36.")
+      const hasNumberedQuestions = /\d+\.\s+(does|is|are|according|can|to what)/i.test(
+        chunk.content
+      );
+      if (hasNumberedQuestions) {
+        score += 15;
+      }
+
+      // Look for Y/N patterns typical in questionnaires
+      if (chunk.content.includes("(Y/N)")) {
+        score += 10;
+      }
+    }
+
+    // Boost for restriction-related queries
+    if (queryLower.includes("restriction")) {
+      if (
+        contentLower.includes("absence of restriction") ||
+        contentLower.includes("no paid") ||
+        contentLower.includes("no screening") ||
+        contentLower.includes("no restriction") ||
+        contentLower.includes("1.2.1") ||
+        contentLower.includes("1.2.2")
+      ) {
+        score += 10;
+      }
+    }
+
+    // Boost for indicator queries
+    if (queryLower.includes("indicator")) {
+      if (
+        contentLower.includes("indicator") &&
+        (contentLower.includes("table") || contentLower.includes("subcategory"))
+      ) {
+        score += 5;
+      }
+    }
+
+    // Multi-word phrase matching
     for (let i = 0; i < queryWords.length - 1; i++) {
       const phrase = queryWords[i] + " " + queryWords[i + 1];
       if (contentLower.includes(phrase)) {
-        multiWordBonus += 5;
+        score += 5;
       }
     }
 
-    // Bonus for chunks with important terms in headers/tables
-    for (const term of importantTerms) {
-      // Check for term appearing near indicator-like patterns
-      if (
-        contentLower.includes(term) &&
-        (contentLower.includes("indicator") ||
-          contentLower.includes("subcategory") ||
-          contentLower.includes("category"))
-      ) {
-        scores[chunk.id] = (scores[chunk.id] || 0) + 2;
-      }
-    }
-
-    if (multiWordBonus > 0) {
-      scores[chunk.id] = (scores[chunk.id] || 0) + multiWordBonus;
-    }
-
-    // Special handling for "restrictions" queries - boost chunks with restriction lists
-    if (
-      queryLower.includes("restriction") &&
-      contentLower.includes("restriction")
-    ) {
-      // Extra boost if it contains numbered indicators or "no" phrases (indicating restriction absence indicators)
-      if (
-        contentLower.includes("no paid") ||
-        contentLower.includes("no screening") ||
-        contentLower.includes("no local") ||
-        contentLower.includes("absence of")
-      ) {
-        scores[chunk.id] = (scores[chunk.id] || 0) + 8;
-      }
-    }
-
-    // Boost for table-like content with indicators
-    if (
-      contentLower.includes("table") &&
-      contentLower.includes("indicator")
-    ) {
-      scores[chunk.id] = (scores[chunk.id] || 0) + 2;
+    if (score > 0) {
+      scores[chunk.id] = score;
     }
   }
 
@@ -171,8 +212,8 @@ exports.handler = async (event) => {
       };
     }
 
-    // Search for relevant context - increased to 10 chunks for better coverage
-    const relevantChunks = searchChunks(message, 10);
+    // Search for relevant context
+    const relevantChunks = searchChunks(message, 12);
     const context = relevantChunks
       .map((chunk) => `[Page ${chunk.page}]\n${chunk.content}`)
       .join("\n\n---\n\n");
@@ -183,11 +224,12 @@ exports.handler = async (event) => {
 IMPORTANT GUIDELINES:
 1. Base your answers primarily on the handbook content provided in the context
 2. Be accurate and cite specific sections or pages when possible
-3. If asked about specific indicators, list them ALL if they are provided in the context
+3. If asked about specific indicators or questions, list them ALL if they appear in the context
 4. Use clear, professional language appropriate for policy professionals
 5. When explaining indicators or scoring, be precise about the methodology
-6. Format lists of indicators clearly with numbers or bullets
-7. If the context contains tables or indicator lists, extract and present that information fully
+6. Format lists of indicators or questions clearly with numbers or bullets
+7. If the context contains questionnaire questions (typically starting with numbers like "35.", "36."), extract and present them fully
+8. Pay attention to the topic being asked about - only use content relevant to that specific topic
 
 CONTEXT FROM THE HANDBOOK:
 ${context || "No specific context found for this query."}`;
