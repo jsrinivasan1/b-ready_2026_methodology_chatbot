@@ -7,31 +7,109 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-// Search for relevant chunks based on query
-function searchChunks(query, maxResults = 5) {
-  const queryWords = query
-    .toLowerCase()
+// Improved search for relevant chunks based on query
+function searchChunks(query, maxResults = 10) {
+  // Normalize and extract keywords from query
+  const queryLower = query.toLowerCase();
+  const queryWords = queryLower
     .split(/\s+/)
-    .filter((word) => word.length > 2);
+    .filter((word) => word.length > 2)
+    .filter(
+      (word) =>
+        ![
+          "the",
+          "and",
+          "for",
+          "are",
+          "what",
+          "how",
+          "which",
+          "that",
+          "this",
+          "with",
+        ].includes(word)
+    );
 
   // Score each chunk based on keyword matches
   const scores = {};
 
+  // Method 1: Use search index for keyword matching
   for (const word of queryWords) {
-    // Check exact matches in index
+    // Exact matches in index (highest weight)
     if (searchIndex[word]) {
       for (const chunkId of searchIndex[word]) {
-        scores[chunkId] = (scores[chunkId] || 0) + 2;
+        scores[chunkId] = (scores[chunkId] || 0) + 3;
       }
     }
 
-    // Check partial matches
+    // Partial matches (medium weight)
     for (const [indexWord, chunkIds] of Object.entries(searchIndex)) {
-      if (indexWord.includes(word) || word.includes(indexWord)) {
+      if (
+        indexWord.length > 3 &&
+        (indexWord.includes(word) || word.includes(indexWord))
+      ) {
         for (const chunkId of chunkIds) {
           scores[chunkId] = (scores[chunkId] || 0) + 1;
         }
       }
+    }
+  }
+
+  // Method 2: Direct content search for important terms
+  // This catches cases where the index might miss context
+  const importantTerms = queryWords.filter((w) => w.length > 4);
+
+  for (const chunk of handbookChunks) {
+    const contentLower = chunk.content.toLowerCase();
+
+    // Bonus for chunks containing multiple query words together
+    let multiWordBonus = 0;
+    for (let i = 0; i < queryWords.length - 1; i++) {
+      const phrase = queryWords[i] + " " + queryWords[i + 1];
+      if (contentLower.includes(phrase)) {
+        multiWordBonus += 5;
+      }
+    }
+
+    // Bonus for chunks with important terms in headers/tables
+    for (const term of importantTerms) {
+      // Check for term appearing near indicator-like patterns
+      if (
+        contentLower.includes(term) &&
+        (contentLower.includes("indicator") ||
+          contentLower.includes("subcategory") ||
+          contentLower.includes("category"))
+      ) {
+        scores[chunk.id] = (scores[chunk.id] || 0) + 2;
+      }
+    }
+
+    if (multiWordBonus > 0) {
+      scores[chunk.id] = (scores[chunk.id] || 0) + multiWordBonus;
+    }
+
+    // Special handling for "restrictions" queries - boost chunks with restriction lists
+    if (
+      queryLower.includes("restriction") &&
+      contentLower.includes("restriction")
+    ) {
+      // Extra boost if it contains numbered indicators or "no" phrases (indicating restriction absence indicators)
+      if (
+        contentLower.includes("no paid") ||
+        contentLower.includes("no screening") ||
+        contentLower.includes("no local") ||
+        contentLower.includes("absence of")
+      ) {
+        scores[chunk.id] = (scores[chunk.id] || 0) + 8;
+      }
+    }
+
+    // Boost for table-like content with indicators
+    if (
+      contentLower.includes("table") &&
+      contentLower.includes("indicator")
+    ) {
+      scores[chunk.id] = (scores[chunk.id] || 0) + 2;
     }
   }
 
@@ -93,8 +171,8 @@ exports.handler = async (event) => {
       };
     }
 
-    // Search for relevant context
-    const relevantChunks = searchChunks(message, 5);
+    // Search for relevant context - increased to 10 chunks for better coverage
+    const relevantChunks = searchChunks(message, 10);
     const context = relevantChunks
       .map((chunk) => `[Page ${chunk.page}]\n${chunk.content}`)
       .join("\n\n---\n\n");
@@ -105,10 +183,11 @@ exports.handler = async (event) => {
 IMPORTANT GUIDELINES:
 1. Base your answers primarily on the handbook content provided in the context
 2. Be accurate and cite specific sections or pages when possible
-3. If the context doesn't contain enough information to fully answer, say so
+3. If asked about specific indicators, list them ALL if they are provided in the context
 4. Use clear, professional language appropriate for policy professionals
 5. When explaining indicators or scoring, be precise about the methodology
-6. If asked about something not in the handbook, politely explain you can only answer questions about B-READY methodology
+6. Format lists of indicators clearly with numbers or bullets
+7. If the context contains tables or indicator lists, extract and present that information fully
 
 CONTEXT FROM THE HANDBOOK:
 ${context || "No specific context found for this query."}`;
@@ -116,7 +195,7 @@ ${context || "No specific context found for this query."}`;
     // Call Claude API
     const response = await anthropic.messages.create({
       model: "claude-sonnet-4-20250514",
-      max_tokens: 1024,
+      max_tokens: 2048,
       system: systemPrompt,
       messages: [
         {
