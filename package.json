@@ -1,15 +1,8 @@
 {
   "name": "b-ready-2026-methodology-chatbot",
   "version": "1.0.0",
-  "description": "B-Ready 2026 methodology - ask me anything chatbot",
-  {
-  "name": "bready-2026-methodology-handbook-chat",
-  "version": "1.0.0",
   "type": "module",
-  "dependencies": {
-    "@anthropic-ai/sdk": "^0.20.0"
-  }
-}
+  "description": "B-Ready 2026 methodology - ask me anything chatbot",
   "main": "index.html",
   "scripts": {
     "dev": "netlify dev"
