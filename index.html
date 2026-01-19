@@ -158,6 +158,7 @@
             border-radius: 12px;
             box-shadow: 0 1px 3px rgba(0,0,0,0.1);
             line-height: 1.5;
+            word-wrap: break-word;
         }
 
         .message.user .message-content {
@@ -179,45 +180,6 @@
 
         .message-content li {
             margin-bottom: 0.25rem;
-        }
-
-        .message-content strong {
-            font-weight: 600;
-        }
-
-        .message-content code {
-            background: #f1f1f1;
-            padding: 0.125rem 0.375rem;
-            border-radius: 4px;
-            font-family: monospace;
-            font-size: 0.9em;
-        }
-
-        .message.user .message-content code {
-            background: rgba(255,255,255,0.2);
-        }
-
-        /* Typing indicator */
-        .typing-indicator {
-            display: flex;
-            gap: 4px;
-            padding: 0.5rem;
-        }
-
-        .typing-indicator span {
-            width: 8px;
-            height: 8px;
-            background: var(--text-light);
-            border-radius: 50%;
-            animation: bounce 1.4s infinite ease-in-out;
-        }
-
-        .typing-indicator span:nth-child(1) { animation-delay: -0.32s; }
-        .typing-indicator span:nth-child(2) { animation-delay: -0.16s; }
-
-        @keyframes bounce {
-            0%, 80%, 100% { transform: scale(0); }
-            40% { transform: scale(1); }
         }
 
         /* Input Area */
@@ -276,7 +238,7 @@
             cursor: not-allowed;
         }
 
-        /* Welcome message */
+        /* Welcome & Suggestions */
         .welcome {
             text-align: center;
             padding: 2rem;
@@ -286,10 +248,6 @@
         .welcome h2 {
             color: var(--wb-blue);
             margin-bottom: 0.5rem;
-        }
-
-        .welcome p {
-            margin-bottom: 1rem;
         }
 
         .suggestions {
@@ -315,48 +273,11 @@
             background: #f0f7ff;
         }
 
-        /* Error message */
         .error {
             background: #fee;
             color: #c00;
             padding: 0.75rem 1rem;
             border-radius: 8px;
-            margin: 0.5rem 0;
-        }
-
-        /* Page reference */
-        .page-ref {
-            font-size: 0.8rem;
-            color: var(--text-light);
-            margin-top: 0.5rem;
-            font-style: italic;
-        }
-
-        /* Responsive */
-        @media (max-width: 640px) {
-            .header {
-                padding: 1rem;
-            }
-            
-            .header-title h1 {
-                font-size: 1.1rem;
-            }
-
-            .new-chat-btn span {
-                display: none;
-            }
-
-            .new-chat-btn {
-                padding: 0.6rem;
-            }
-            
-            .message {
-                max-width: 95%;
-            }
-            
-            .suggestions {
-                flex-direction: column;
-            }
         }
     </style>
 </head>
@@ -375,14 +296,13 @@
 
     <main class="chat-container">
         <div class="messages" id="messages">
-            <div class="welcome">
+            <div class="welcome" id="welcome-msg">
                 <h2>👋 Welcome!</h2>
-                <p>I'm here to help you understand the B-READY 2026 Methodology Handbook.<br>Ask me anything about indicators, scoring, data collection, or methodology.</p>
+                <p>I'm here to help you understand the B-READY 2026 Methodology Handbook.<br>Ask me anything about indicators, scoring, or methodology.</p>
                 <div class="suggestions">
                     <button class="suggestion" onclick="askQuestion('What are the main pillars of B-READY?')">Main pillars of B-READY</button>
                     <button class="suggestion" onclick="askQuestion('How is the Business Entry topic scored?')">Business Entry scoring</button>
                     <button class="suggestion" onclick="askQuestion('What data sources are used?')">Data sources</button>
-                    <button class="suggestion" onclick="askQuestion('Explain the regulatory framework indicators')">Regulatory framework</button>
                 </div>
             </div>
         </div>
@@ -408,7 +328,6 @@
         const sendBtn = document.getElementById('send-btn');
         let isWaiting = false;
 
-        // Auto-resize textarea
         userInput.addEventListener('input', function() {
             this.style.height = 'auto';
             this.style.height = Math.min(this.scrollHeight, 150) + 'px';
@@ -427,100 +346,21 @@
         }
 
         function startNewChat() {
-            // Clear all messages
-            messagesContainer.innerHTML = `
-                <div class="welcome">
-                    <h2>👋 Welcome!</h2>
-                    <p>I'm here to help you understand the B-READY 2026 Methodology Handbook.<br>Ask me anything about indicators, scoring, data collection, or methodology.</p>
-                    <div class="suggestions">
-                        <button class="suggestion" onclick="askQuestion('What are the main pillars of B-READY?')">Main pillars of B-READY</button>
-                        <button class="suggestion" onclick="askQuestion('How is the Business Entry topic scored?')">Business Entry scoring</button>
-                        <button class="suggestion" onclick="askQuestion('What data sources are used?')">Data sources</button>
-                        <button class="suggestion" onclick="askQuestion('Explain the regulatory framework indicators')">Regulatory framework</button>
-                    </div>
-                </div>
-            `;
-            // Clear input
-            userInput.value = '';
-            userInput.style.height = 'auto';
-            userInput.focus();
-        }
-
-        function addMessage(content, role) {
-            // Remove welcome message if it exists
-            const welcome = messagesContainer.querySelector('.welcome');
-            if (welcome) welcome.remove();
-
-            const messageDiv = document.createElement('div');
-            messageDiv.className = `message ${role}`;
-            
-            const avatar = document.createElement('div');
-            avatar.className = 'message-avatar';
-            avatar.textContent = role === 'user' ? '👤' : '📘';
-            
-            const contentDiv = document.createElement('div');
-            contentDiv.className = 'message-content';
-            
-            if (role === 'assistant') {
-                contentDiv.innerHTML = formatMessage(content);
-            } else {
-                contentDiv.textContent = content;
-            }
-            
-            messageDiv.appendChild(avatar);
-            messageDiv.appendChild(contentDiv);
-            messagesContainer.appendChild(messageDiv);
-            
-            messagesContainer.scrollTop = messagesContainer.scrollHeight;
-            
-            return messageDiv;
-        }
-
-        function addTypingIndicator() {
-            const messageDiv = document.createElement('div');
-            messageDiv.className = 'message assistant';
-            messageDiv.id = 'typing-indicator';
-            
-            const avatar = document.createElement('div');
-            avatar.className = 'message-avatar';
-            avatar.textContent = '📘';
-            
-            const contentDiv = document.createElement('div');
-            contentDiv.className = 'message-content';
-            contentDiv.innerHTML = '<div class="typing-indicator"><span></span><span></span><span></span></div>';
-            
-            messageDiv.appendChild(avatar);
-            messageDiv.appendChild(contentDiv);
-            messagesContainer.appendChild(messageDiv);
-            
-            messagesContainer.scrollTop = messagesContainer.scrollHeight;
-        }
-
-        function removeTypingIndicator() {
-            const indicator = document.getElementById('typing-indicator');
-            if (indicator) indicator.remove();
+            window.location.reload();
         }
 
         function formatMessage(text) {
-            // Convert markdown-style formatting to HTML
-            let html = text
-                // Bold
+            if (!text) return "";
+            return text
                 .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                // Bullet points
                 .replace(/^- (.+)$/gm, '<li>$1</li>')
-                // Numbered lists
                 .replace(/^\d+\. (.+)$/gm, '<li>$1</li>')
-                // Paragraphs
                 .split('\n\n')
                 .map(para => {
-                    if (para.includes('<li>')) {
-                        return '<ul>' + para + '</ul>';
-                    }
+                    if (para.includes('<li>')) return '<ul>' + para + '</ul>';
                     return '<p>' + para.replace(/\n/g, '<br>') + '</p>';
                 })
                 .join('');
-            
-            return html;
         }
 
         async function sendMessage() {
@@ -532,29 +372,63 @@
             userInput.value = '';
             userInput.style.height = 'auto';
 
-            addMessage(message, 'user');
-            addTypingIndicator();
+            // Remove welcome
+            const welcome = document.getElementById('welcome-msg');
+            if (welcome) welcome.remove();
+
+            // Add User Message
+            const userDiv = document.createElement('div');
+            userDiv.className = 'message user';
+            userDiv.innerHTML = `<div class="message-avatar">👤</div><div class="message-content">${message}</div>`;
+            messagesContainer.appendChild(userDiv);
+
+            // Add Bot Message Placeholder
+            const botDiv = document.createElement('div');
+            botDiv.className = 'message assistant';
+            const botContent = document.createElement('div');
+            botContent.className = 'message-content';
+            botContent.innerHTML = '<p><em>Thinking...</em></p>';
+            botDiv.innerHTML = `<div class="message-avatar">📘</div>`;
+            botDiv.appendChild(botContent);
+            messagesContainer.appendChild(botDiv);
+            
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
 
             try {
-                const response = await fetch('/.netlify/functions/chat', {
+                const response = await fetch('/api/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ message })
                 });
 
-                removeTypingIndicator();
+                if (!response.ok) throw new Error('Communication error');
 
-                if (!response.ok) {
-                    const errorData = await response.json().catch(() => ({}));
-                    throw new Error(errorData.error || 'Failed to get response');
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let fullText = "";
+                let firstChunk = true;
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    const chunk = decoder.decode(value, { stream: true });
+                    
+                    if (firstChunk) {
+                        botContent.innerHTML = "";
+                        firstChunk = false;
+                    }
+
+                    // Skip the internal metadata line if it appears
+                    if (chunk.startsWith('[[SOURCES]]:')) continue;
+
+                    fullText += chunk;
+                    botContent.innerHTML = formatMessage(fullText);
+                    messagesContainer.scrollTop = messagesContainer.scrollHeight;
                 }
 
-                const data = await response.json();
-                addMessage(data.response, 'assistant');
-
             } catch (error) {
-                removeTypingIndicator();
-                addMessage(`Sorry, I encountered an error: ${error.message}. Please try again.`, 'assistant');
+                botContent.innerHTML = `<p class="error">Error: ${error.message}</p>`;
             } finally {
                 isWaiting = false;
                 sendBtn.disabled = false;
