@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
-import handbookChunks from "../../data/handbook-chunks.json" assert { type: "json" };
-import searchIndex from "../../data/search-index.json" assert { type: "json" };
+import handbookChunks from "../../data/handbook-chunks.json" with { type: "json" };
+import searchIndex from "../../data/search-index.json" with { type: "json" };
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
